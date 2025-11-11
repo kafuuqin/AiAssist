@@ -37,7 +37,9 @@ header {
   .logo {
     margin: 0 2rem 0 0;
   }
-
+  .change{
+    margin:1
+  }
   header .wrapper {
     display: flex;
     place-items: flex-start;
