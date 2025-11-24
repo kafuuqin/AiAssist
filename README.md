@@ -1,38 +1,28 @@
-# aiassist
+# 教师智能助手（前后端分离）
 
-This template should help get you started developing with Vue 3 in Vite.
+基于 Vue 3（Vite）+ Flask + MySQL 的教师智能助手系统，涵盖资料管理、考勤管理、成绩分析、课堂互动与智能能力（资料自动分类、成绩预测、智能问答、智能点到）。
 
-## Recommended IDE Setup
+## 当前状态
+- 架构与数据模型草案：`docs/architecture.md`
+- 前端：现有 Vite + Vue 3 模板，后续将扩展为完整管理端。
+- 后端：待搭建 Flask/REST API 服务。
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## 技术栈
+- 前端：Vue 3 + Vite + Pinia + Vue Router + Element Plus
+- 后端：Flask + Flask-SQLAlchemy + Flask-JWT-Extended + Flask-SocketIO
+- 数据与智能：MySQL、Pandas/NumPy、scikit-learn、jieba、OpenCV
+- 工具与部署：npm、pip、Docker Compose、Postman/OpenAPI
 
-## Recommended Browser Setup
+## 目录规划（预期）
+- `frontend/`：Vue 单页应用（将从当前根目录迁移/扩展）
+- `backend/`：Flask API、模型、服务、任务
+- `docs/`：设计与接口文档
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd) 
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+## 开发里程碑
+1. 完成架构与模型设计（已完成草案）
+2. 搭建后端骨架与认证（进行中：课程/资料/考勤/成绩/互动 API 基础完成）
+3. 搭建前端骨架（布局/路由/状态）并接入基础 API（进行中）
+4. 实现资料、考勤、成绩、互动核心流程（进行中）
+5. 接入智能能力与容器化部署（待开始）
 
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
+> 详细设计与接口草案见 `docs/architecture.md`。后续会补充运行与部署说明。
