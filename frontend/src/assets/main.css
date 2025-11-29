@@ -1,0 +1,14 @@
+@import './base.css';
+
+#app {
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.el-card {
+  border-radius: 14px;
+}
