@@ -3,7 +3,11 @@ import random
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
-import jieba.analyse as jieba_analyse
+
+try:  # optional dependency
+    import jieba.analyse as jieba_analyse  # type: ignore
+except Exception:  # pragma: no cover - fallback when jieba not installed
+    jieba_analyse = None
 
 from ..utils.responses import ok, error
 from ..models import Material
@@ -50,8 +54,12 @@ def classify_material():
     if err:
         return err
 
-    # 提取关键词
-    tags = jieba_analyse.extract_tags(text, topK=3) or ["通用资料"]
+    # 提取关键词（无 jieba 时使用简单分词）
+    if jieba_analyse:
+        tags = jieba_analyse.extract_tags(text, topK=3) or ["通用资料"]
+    else:
+        tokens = [w for w in text.replace("，", " ").replace(",", " ").split() if w]
+        tags = (tokens[:3] or ["通用资料"])
 
     if material:
         # 合并去重

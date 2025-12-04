@@ -181,7 +181,12 @@ const handleImport = async () => {
     // 重置上传控件
     uploadKey.value++
   } catch (err) {
-    ElMessage.error(err.response?.data?.message || '导入失败')
+    const resp = err.response?.data
+    const detail = Array.isArray(resp?.errors)
+      ? resp.errors.map((e) => `行${e.line}: ${e.message}`).join('；')
+      : ''
+    const msg = resp?.message || '导入失败'
+    ElMessage.error(detail ? `${msg}：${detail}` : msg)
   }
 }
 
@@ -385,7 +390,7 @@ const handlePredict = async () => {
           </el-upload>
         </el-form-item>
         <el-alert
-          title="请使用模板导入，必填列：student_id, assignment_id, score；支持 CSV/XLSX，错误会返回行号。"
+          title="请使用模板导入，必填列：student_id, score（comment 可选）；如文件包含 assignment_id 需与所选作业一致；支持 CSV/XLSX，错误会返回行号。"
           type="info"
           show-icon
         />

@@ -1,7 +1,10 @@
 import os
 
-import pandas as pd
-from flask import Blueprint, current_app, request
+try:
+    import pandas as pd
+except Exception:  # pragma: no cover - optional dependency fallback
+    pd = None
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import jwt_required
 
 from .uploads import allowed_file
@@ -19,8 +22,8 @@ def import_grades(course_id):
     """
     导入成绩（CSV/XLSX），严格校验后事务写入。
     payload: {assignment_id, file_path}
-    - 必填列：student_id, assignment_id, score
-    - score 范围：0~100（可在此处调整）
+    - 必填列：student_id, score，assignment_id 可选（若提供需与所选一致）
+    - score 范围：0~full_score（默认 100，可在此处调整）
     - 发现错误时整体回滚并返回错误行信息
     """
     data = request.get_json(silent=True) or {}
@@ -29,6 +32,13 @@ def import_grades(course_id):
 
     if not assignment_id or not file_path:
         return error("assignment_id and file_path required")
+    try:
+        assignment_id = int(assignment_id)
+    except (TypeError, ValueError):
+        return error("invalid assignment_id")
+
+    if pd is None:
+        return error("pandas not installed on server")
 
     # 权限：课程 owner/teacher/ta/admin
     _, err = ensure_course_member(course_id, allow_roles=["teacher", "ta"], as_owner=True)
@@ -44,39 +54,51 @@ def import_grades(course_id):
     full_path = os.path.join(upload_dir, filename)
     if not os.path.exists(full_path):
         return error("file not found", 404)
-    if not allowed_file(filename):
-        return error("invalid file")
+
+    # 扩展名校验：导入支持 csv/xls/xlsx，即便上传白名单未显式包含
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    import_exts = {"csv", "xls", "xlsx"}
+    if ext not in import_exts and not allowed_file(filename):
+        return error("invalid filename or extension")
 
     # 读取文件
     try:
-        if filename.lower().endswith(".csv"):
+        if ext == "csv":
             df = pd.read_csv(full_path)
         else:
-            df = pd.read_excel(full_path)
+            df = pd.read_excel(full_path, engine="openpyxl")
     except Exception as exc:  # pragma: no cover - 文件解析异常
         return error(f"failed to parse file: {exc}")
 
-    required_cols = {"student_id", "assignment_id", "score"}
-    if not required_cols.issubset(set(df.columns)):
-        return error("missing required columns: student_id, assignment_id, score")
+    required_cols = {"student_id", "score"}
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        return error(f"missing required columns: {', '.join(sorted(missing_cols))}")
 
     errors = []
     payload = []
     seen = set()
-    MIN_SCORE, MAX_SCORE = 0, 100
+    MIN_SCORE, MAX_SCORE = 0, assignment.full_score or 100
+    has_assignment_col = "assignment_id" in df.columns
 
     for idx, row in df.iterrows():
         line_no = idx + 2  # header 占一行
-        sid = str(row.get("student_id", "")).strip()
-        aid = str(row.get("assignment_id", "")).strip()
+        sid_raw = row.get("student_id")
+        sid = "" if pd.isna(sid_raw) else str(sid_raw).strip()
+        aid_raw = row.get("assignment_id") if has_assignment_col else ""
+        aid = "" if (not has_assignment_col or pd.isna(aid_raw)) else str(aid_raw).strip()
         score_raw = row.get("score")
-        comment = row.get("comment") if "comment" in df.columns else None
+        comment_raw = row.get("comment") if "comment" in df.columns else None
+        comment = None if comment_raw is None or pd.isna(comment_raw) else str(comment_raw)
 
         if not sid:
             errors.append({"line": line_no, "message": "student_id required"})
             continue
-        if aid and str(aid) != str(assignment_id):
+        if has_assignment_col and aid and str(aid) != str(assignment_id):
             errors.append({"line": line_no, "message": "assignment_id mismatch"})
+            continue
+        if score_raw is None or pd.isna(score_raw):
+            errors.append({"line": line_no, "message": "score required"})
             continue
         try:
             score_val = float(score_raw)
@@ -93,27 +115,29 @@ def import_grades(course_id):
         payload.append({"student_id": sid, "score": score_val, "comment": comment})
 
     if errors:
-        return error({"message": "validation failed", "errors": errors})
+        return jsonify({"message": "validation failed", "errors": errors, "status": 400}), 400
 
     inserted = 0
     updated = 0
     try:
-        with db.session.begin():
-            for item in payload:
-                existing = Grade.query.filter_by(assignment_id=assignment_id, student_id=item["student_id"]).first()
-                if existing:
-                    existing.score = item["score"]
-                    existing.comment = item["comment"]
-                    updated += 1
-                else:
-                    grade = Grade(
-                        assignment_id=assignment_id,
-                        student_id=item["student_id"],
-                        score=item["score"],
-                        comment=item["comment"],
-                    )
-                    db.session.add(grade)
-                    inserted += 1
+        # 确保前序操作未占用事务
+        db.session.rollback()
+        for item in payload:
+            existing = Grade.query.filter_by(assignment_id=assignment_id, student_id=item["student_id"]).first()
+            if existing:
+                existing.score = item["score"]
+                existing.comment = item["comment"]
+                updated += 1
+            else:
+                grade = Grade(
+                    assignment_id=assignment_id,
+                    student_id=item["student_id"],
+                    score=item["score"],
+                    comment=item["comment"],
+                )
+                db.session.add(grade)
+                inserted += 1
+        db.session.commit()
     except Exception as exc:  # pragma: no cover - 事务异常回滚
         db.session.rollback()
         return error(f"import failed: {exc}")

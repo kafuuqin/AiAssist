@@ -3,7 +3,6 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request, Response
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy import func
-import pandas as pd
 
 from ..extensions import db
 from ..models import (
@@ -21,7 +20,7 @@ from ..models import (
 from ..authz import ensure_course_member
 from ..utils.responses import error, ok
 from sqlalchemy import or_
-from ..utils.exporter import grades_to_csv, grades_template_csv
+from ..utils.exporter import grades_to_csv
 
 courses_bp = Blueprint("courses", __name__, url_prefix="/courses")
 
@@ -84,8 +83,6 @@ def add_member(course_id):
         return error("user_id required")
     if not User.query.get(user_id):
         return error("user not found", 404)
-    if role_in_course not in ROLE_CHOICES:
-        return error("invalid role_in_course")
     exists = Enrollment.query.filter_by(course_id=course_id, user_id=user_id).first()
     if exists:
         return error("already enrolled")
@@ -107,8 +104,6 @@ def update_member(course_id, member_id):
     enrollment = Enrollment.query.filter_by(id=member_id, course_id=course_id).first()
     if not enrollment:
         return error("member not found", 404)
-    if role_in_course and role_in_course not in ROLE_CHOICES:
-        return error("invalid role_in_course")
     if role_in_course:
         enrollment.role_in_course = role_in_course
     if status:
@@ -193,7 +188,7 @@ def list_materials(course_id):
 @courses_bp.post("/<int:course_id>/materials")
 @jwt_required()
 def create_material(course_id):
-    _, err = ensure_course_member(course_id, allow_roles=["teacher", "ta"], as_owner=True)
+    _, err = ensure_course_member(course_id)
     if err:
         return err
     data = _json()
@@ -231,7 +226,7 @@ def list_attendance(course_id):
 @courses_bp.post("/<int:course_id>/attendance")
 @jwt_required()
 def create_attendance(course_id):
-    _, err = ensure_course_member(course_id, as_owner=True, allow_roles=["teacher", "ta"])
+    _, err = ensure_course_member(course_id)
     if err:
         return err
     data = _json()
@@ -329,8 +324,7 @@ def grade_template(course_id):
     _, err = ensure_course_member(course_id)
     if err:
         return err
-    assignment = request.args.get("assignment_id")
-    content = grades_template_csv(assignment_id=assignment)
+    content = "student_id,score,comment\nS001,95,示例评语\nS002,88,\n"
     return Response(
         content,
         mimetype="text/csv",
@@ -341,7 +335,7 @@ def grade_template(course_id):
 @courses_bp.post("/<int:course_id>/assignments")
 @jwt_required()
 def create_assignment(course_id):
-    _, err = ensure_course_member(course_id, as_owner=True, allow_roles=["teacher", "ta"])
+    _, err = ensure_course_member(course_id, as_owner=True)
     if err:
         return err
     data = _json()
@@ -364,7 +358,7 @@ def create_assignment(course_id):
 @courses_bp.post("/<int:course_id>/assignments/<int:assignment_id>/grades")
 @jwt_required()
 def create_grade(course_id, assignment_id):
-    _, err = ensure_course_member(course_id, allow_roles=["teacher", "ta"], as_owner=True)
+    _, err = ensure_course_member(course_id)
     if err:
         return err
     data = _json()
@@ -393,6 +387,7 @@ def grade_stats(course_id):
     _, err = ensure_course_member(course_id)
     if err:
         return err
+    # 简易统计，未来可用 Pandas 替换
     grades = (
         db.session.query(Grade.score)
         .join(Grade.assignment)
@@ -401,28 +396,19 @@ def grade_stats(course_id):
     )
     scores = [g.score for g in grades]
     if not scores:
-        return ok({"avg": None, "max": None, "min": None, "count": 0, "std": None, "distribution": []})
-
-    try:
-        series = pd.Series(scores, dtype="float")
-        buckets = pd.cut(series, bins=[-float("inf"), 60, 70, 80, 90, float("inf")], right=False)
-        dist = buckets.value_counts().sort_index()
-        distribution = [
-            {"range": label.replace("[", "").replace(")", "").replace("-inf", "<60").replace("inf", "90+") , "count": int(count)}
-            for label, count in dist.items()
-        ]
-        payload = {
-            "avg": series.mean(),
-            "max": series.max(),
-            "min": series.min(),
-            "std": series.std(ddof=0),
-            "count": int(series.count()),
-            "distribution": distribution,
+        return ok({"avg": None, "max": None, "min": None, "count": 0, "std": None})
+    avg = sum(scores) / len(scores)
+    variance = sum((s - avg) ** 2 for s in scores) / len(scores)
+    std = variance**0.5
+    return ok(
+        {
+            "avg": avg,
+            "max": max(scores),
+            "min": min(scores),
+            "std": std,
+            "count": len(scores),
         }
-    except Exception:
-        payload = {"avg": None, "max": None, "min": None, "count": len(scores), "std": None, "distribution": []}
-
-    return ok(payload)
+    )
 
 
 @courses_bp.get("/<int:course_id>/polls")
@@ -446,7 +432,7 @@ def list_polls(course_id):
 @courses_bp.post("/<int:course_id>/polls")
 @jwt_required()
 def create_poll(course_id):
-    _, err = ensure_course_member(course_id, allow_roles=["teacher", "ta"], as_owner=True)
+    _, err = ensure_course_member(course_id)
     if err:
         return err
     data = _json()
@@ -477,4 +463,3 @@ def vote_poll(course_id, poll_id):
     db.session.add(vote)
     db.session.commit()
     return ok(vote.to_dict(), 201)
-ROLE_CHOICES = {"owner", "teacher", "assistant", "student", "ta"}

@@ -19,7 +19,19 @@ class BaseConfig:
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.getcwd(), "instance", "uploads"))
     ALLOWED_UPLOAD_EXTS = _parse_list(
         os.getenv("ALLOWED_UPLOAD_EXTS"),
-        ["pdf", "ppt", "pptx", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg"],
+        [
+            "pdf",
+            "ppt",
+            "pptx",
+            "doc",
+            "docx",
+            "xls",
+            "xlsx",
+            "csv",
+            "png",
+            "jpg",
+            "jpeg",
+        ],
     )
     DISALLOWED_UPLOAD_EXTS = _parse_list(
         os.getenv("DISALLOWED_UPLOAD_EXTS"),
@@ -35,6 +47,7 @@ class BaseConfig:
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "text/csv",
             "image/png",
             "image/jpeg",
         ],

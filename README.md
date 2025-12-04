@@ -47,17 +47,40 @@ docker run -d --name aiassist-db \
 ```
 默认连接串：`mysql+pymysql://root:pass@127.0.0.1:3307/teacher_assistant`。
 
-### 后端启动（Flask）
+### 后端启动（Flask）- Windows CMD 示例
+```cmd
+cd backend
+:: 可选：创建虚拟环境（如已安装 python，可用 python -m venv）
+python -m venv .venv
+.venv\Scripts\activate
+
+:: 安装依赖
+pip install -r requirements.txt
+
+:: 设置环境变量（按需修改数据库地址/密钥）
+set FLASK_APP=wsgi.py
+set FLASK_ENV=development
+set FLASK_SKIP_DOTENV=1
+set DATABASE_URL=mysql+pymysql://root:pass@127.0.0.1:3307/teacher_assistant
+set JWT_SECRET_KEY=dev-secret
+set CORS_ORIGINS=http://localhost:5173
+set UPLOAD_DIR=./instance/uploads
+set MAX_UPLOAD_MB=20
+set ALLOWED_UPLOAD_EXTS=pdf,ppt,pptx,doc,docx,xls,xlsx,csv,png,jpg,jpeg
+
+:: 数据库迁移
+python -m flask db upgrade
+:: 启动服务
+python -m flask run --host=0.0.0.0 --port=5000
+```
+
+### 后端启动（Linux/macOS）- Bash 示例
 ```bash
 cd backend
-# 可选：创建虚拟环境
 python3 -m venv .venv
-source .venv/bin/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
-# 安装依赖
+source .venv/bin/activate
 pip install -r requirements.txt
-# 准备环境变量（复制 .env.example 覆盖需要的值）
-cp .env.example .env
-# 或直接导出
+
 export FLASK_APP=wsgi.py
 export FLASK_ENV=development
 export FLASK_SKIP_DOTENV=1
@@ -66,12 +89,10 @@ export JWT_SECRET_KEY=dev-secret
 export CORS_ORIGINS=http://localhost:5173
 export UPLOAD_DIR=./instance/uploads
 export MAX_UPLOAD_MB=20
-export ALLOWED_UPLOAD_EXTS=pdf,ppt,pptx,doc,docx,xls,xlsx,png,jpg,jpeg
+export ALLOWED_UPLOAD_EXTS=pdf,ppt,pptx,doc,docx,xls,xlsx,csv,png,jpg,jpeg
 
-# 数据库迁移
-flask db upgrade
-# 启动服务
-flask run --host=0.0.0.0 --port=5000
+python -m flask db upgrade
+python -m flask run --host=0.0.0.0 --port=5000
 ```
 日志默认输出到控制台；可用 `FLASK_SKIP_DOTENV=1` 保证环境变量只由外部提供。
 
@@ -104,3 +125,18 @@ npm run dev -- --host --port 5173 --strictPort
 2. 一键启动：`docker compose up -d --build`（包含 db/backend/frontend）。后端启动时自动执行 `flask db upgrade`。
 3. 访问：前端 `http://localhost:8080`，后端 API `http://localhost:5000/api`，MySQL `localhost:3307`（root/pass）。
 4. 可选：`docker compose run --rm backend python scripts/seed_demo_data.py` 注入演示数据。
+
+### 获取演示用 MySQL 数据
+1) 启动数据库（Windows PowerShell/CMD 可直接执行）：
+```cmd
+docker run -d --name aiassist-db ^
+  -p 3307:3306 ^
+  -e MYSQL_ROOT_PASSWORD=pass ^
+  -e MYSQL_DATABASE=teacher_assistant ^
+  mysql:8.0
+```
+2) 指定连接串：`DATABASE_URL=mysql+pymysql://root:pass@127.0.0.1:3307/teacher_assistant`
+3) 运行迁移：`python -m flask db upgrade`
+4) 导入演示数据：`python backend/scripts/seed_demo_data.py`（同样设置 FLASK_APP/FLASK_SKIP_DOTENV/DATABASE_URL）
+
+> 如果 `docker compose up` 报错因 `.venv` 体积或路径，已在 `backend/.dockerignore` 排除 `.venv/`；如仍报路径访问异常，可先删除本地 `.venv` 再构建，或在 Windows 上使用 WSL 集成的 Docker。
