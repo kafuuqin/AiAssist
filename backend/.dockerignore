@@ -1,0 +1,11 @@
+.venv
+__pycache__
+instance/uploads
+*.pyc
+*.pyo
+*.log
+*.sqlite
+*.db
+env
+dist
+build

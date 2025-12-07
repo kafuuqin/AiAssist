@@ -1,0 +1,10 @@
+# ignore local artifacts to keep docker context small and avoid Windows path issues
+node_modules
+dist
+.env
+.env.*
+.vscode
+.DS_Store
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
