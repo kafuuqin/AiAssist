@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useCourseStore } from '../../stores/course'
 import { useAuthStore } from '../../stores/auth'
-import SmartAttendanceDialog from './SmartAttendanceDialog.vue'  // ✅ 新增
+import SmartAttendanceDialog from '../../components/SmartAttendanceDialog.vue'  // ✅ 新增
 
 const courseStore = useCourseStore()
 const auth = useAuthStore()
@@ -15,9 +15,8 @@ const detailLoading = ref(false)
 const qrCode = ref('')
 const passcode = ref('')
 
-// ✅ 新增：智能点到弹窗控制
 const smartVisible = ref(false)
-const smartSessionId = ref<number | null>(null)
+const smartSessionId = ref(null)
 
 const load = async () => {
   if (!courseStore.activeCourseId) return
@@ -49,7 +48,7 @@ const handleCreate = async () => {
   }
 }
 
-const openDetail = async (sessionId: number) => {
+const openDetail = async (sessionId) => {
   detailVisible.value = true
   detailLoading.value = true
   try {
@@ -63,9 +62,8 @@ const openDetail = async (sessionId: number) => {
   }
 }
 
-// ✅ 新增：打开智能点到弹窗
+// 打开智能点到
 const openSmartAttendance = () => {
-  // 这里默认取当前课程中状态为 open 的签到任务，也可以改成弹窗内选择
   const openSessions = (courseStore.attendance || []).filter(
       (s) => s.status === 'open'
   )
@@ -73,22 +71,20 @@ const openSmartAttendance = () => {
     ElMessage.warning('请先发布一个“进行中”的签到任务')
     return
   }
-  // 简单起见，取第一个 open 的 session
   smartSessionId.value = openSessions[0].id
   smartVisible.value = true
 }
 
-// ✅ 新增：智能点到完成回调
-const handleSmartFinished = async (payload: { sessionId: number } | undefined) => {
+// 智能点到完成回调
+const handleSmartFinished = async (payload) => {
   smartVisible.value = false
-  // 刷新整体考勤列表和当前详情
   await load()
-  if (payload?.sessionId) {
+  if (payload && payload.sessionId) {
     await openDetail(payload.sessionId)
   }
 }
 
-const handleExport = async (sessionId: number) => {
+const handleExport = async (sessionId) => {
   if (!sessionId) return
   try {
     const data = await courseStore.loadAttendanceDetail(sessionId)
@@ -124,6 +120,7 @@ watch(
 </script>
 
 
+
 <template>
   <div class="page">
     <div class="page-head">
@@ -135,13 +132,7 @@ watch(
       <div class="actions" v-if="isManager">
         <el-input v-model="title" placeholder="请输入签到标题" style="width: 220px" />
         <el-button type="primary" :loading="creating" @click="handleCreate">发布签到</el-button>
-        <el-button
-            type="success"
-            plain
-            @click="openSmartAttendance"
-        >
-        智能点到
-        </el-button>
+        <el-button type="success" plain @click="openSmartAttendance">智能点到</el-button>
       </div>
     </div>
 
@@ -194,6 +185,7 @@ watch(
         :course-id="courseStore.activeCourseId"
         @finished="handleSmartFinished"
     />
+
   </div>
 </template>
 

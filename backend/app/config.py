@@ -52,7 +52,7 @@ class BaseConfig:
             "image/jpeg",
         ],
     )
-    MAX_CONTENT_LENGTH = int(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024  # Flask will reject > size
+    MAX_CONTENT_LENGTH = int(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024 * 60  # Flask will reject > size
 
 
 class DevelopmentConfig(BaseConfig):
