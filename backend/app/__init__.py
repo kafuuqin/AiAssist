@@ -59,6 +59,7 @@ def register_shellcontext(app):
             Poll,
             PollVote,
             User,
+            FaceEmbedding
         )
 
         return {
@@ -73,6 +74,7 @@ def register_shellcontext(app):
             "Grade": Grade,
             "Poll": Poll,
             "PollVote": PollVote,
+            "FaceEmbedding": FaceEmbedding
         }
 
 
