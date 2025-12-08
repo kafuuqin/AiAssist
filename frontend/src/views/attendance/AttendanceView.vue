@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElDialog } from 'element-plus'
 import { useCourseStore } from '@/stores/course.js'
 import { useAuthStore } from '@/stores/auth.js'
 import SmartAttendanceDialog from '@/components/SmartAttendanceDialog.vue'
+import GestureLock from '../../components/GestureLock.vue'
 
 const courseStore = useCourseStore()
 const auth = useAuthStore()
@@ -14,7 +15,9 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const qrCode = ref('')
 const passcode = ref('')
-
+const gestureDialogVisible = ref(false)
+const teacherGesture = ref('')
+const selectedMode = ref('qrcode') // 默认二维码模式
 const smartVisible = ref(false)
 const smartSessionId = ref(null)
 
@@ -35,17 +38,47 @@ const handleCreate = async () => {
     ElMessage.warning('请输入签到标题')
     return
   }
+
+  if (selectedMode.value === 'gesture' && !teacherGesture.value) {
+    ElMessage.warning('请先绘制手势图案')
+    return
+  }
+
   creating.value = true
   try {
-    await courseStore.addAttendance({ title: title.value })
+    const data = {
+      title: title.value,
+      mode: selectedMode.value
+    }
+
+    if (selectedMode.value === 'gesture') {
+      data.gesture_pattern = teacherGesture.value
+    }
+
+    await courseStore.addAttendance(data)
     ElMessage.success('创建成功')
     title.value = ''
-    await load()
+    teacherGesture.value = ''
+    selectedMode.value = 'qrcode'
+    gestureDialogVisible.value = false
   } catch (err) {
     ElMessage.error(err.response?.data?.message || '创建失败')
   } finally {
     creating.value = false
   }
+}
+
+const openGestureDialog = () => {
+  if (!title.value) {
+    ElMessage.warning('请输入签到标题')
+    return
+  }
+  gestureDialogVisible.value = true
+  teacherGesture.value = ''
+}
+
+const handleGestureComplete = (pattern) => {
+  teacherGesture.value = pattern
 }
 
 const openDetail = async (sessionId) => {
@@ -89,7 +122,7 @@ const handleExport = async (sessionId) => {
   try {
     const data = await courseStore.loadAttendanceDetail(sessionId)
     const rows = (data.records || []).map(
-        (r) => `${r.student_id},${r.status},${r.created_at || ''},${r.evidence || ''}`
+      (r) => `${r.student_id},${r.status},${r.created_at || ''},${r.evidence || ''}`
     )
     const csv = ['student_id,status,created_at,evidence', ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -114,8 +147,8 @@ const isManager = computed(() => {
 
 onMounted(load)
 watch(
-    () => courseStore.activeCourseId,
-    () => load()
+  () => courseStore.activeCourseId,
+  () => load()
 )
 </script>
 
@@ -127,11 +160,28 @@ watch(
       <div>
         <p class="eyebrow">课堂考勤</p>
         <h2>签到任务与实时到课</h2>
-        <p class="sub">支持二维码、口令、拍照点名，实时查看到课率并导出报表。</p>
+        <p class="sub">支持二维码、手势、拍照点名，实时查看到课率并导出报表。</p>
       </div>
       <div class="actions" v-if="isManager">
         <el-input v-model="title" placeholder="请输入签到标题" style="width: 220px" />
-        <el-button type="primary" :loading="creating" @click="handleCreate">发布签到</el-button>
+        <el-select v-model="selectedMode" placeholder="选择签到模式" style="width: 120px">
+          <el-option label="二维码" value="qrcode" />
+          <el-option label="手势" value="gesture" />
+        </el-select>
+        <el-button
+          v-if="selectedMode === 'gesture'"
+          type="primary"
+          @click="openGestureDialog"
+        >
+          绘制手势
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="creating"
+          @click="handleCreate"
+        >
+          发布签到
+        </el-button>
         <el-button type="success" plain @click="openSmartAttendance">智能点到</el-button>
       </div>
     </div>
@@ -142,7 +192,8 @@ watch(
           <div>
             <p class="title">{{ item.title }}</p>
             <p class="meta">
-              模式：{{ item.mode }} · 开始：{{ item.start_at?.slice(11, 16) || item.start_at?.slice(0, 10) }}
+              模式：{{ item.mode === 'gesture' ? '手势签到' : '二维码签到' }} ·
+              开始：{{ item.start_at?.slice(11, 16) || item.start_at?.slice(0, 10) }}
             </p>
             <el-tag :type="item.status === 'open' ? 'success' : 'info'">{{ item.status }}</el-tag>
           </div>
@@ -155,6 +206,39 @@ watch(
       </div>
     </el-card>
 
+    <!-- 手势绘制对话框 -->
+    <el-dialog
+      v-model="gestureDialogVisible"
+      title="绘制手势图案"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <div class="gesture-dialog">
+        <p class="prompt-text">请绘制手势图案，学生需要按照此图案进行签到：</p>
+        <p class="hint-text">连接至少4个点，图案不能重复</p>
+
+        <div class="gesture-container">
+          <GestureLock @complete="handleGestureComplete" />
+        </div>
+
+        <div v-if="teacherGesture" class="gesture-result">
+          <p>已绘制图案：</p>
+          <p class="pattern">{{ teacherGesture }}</p>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="gestureDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :disabled="!teacherGesture"
+          @click="gestureDialogVisible = false"
+        >
+          确认
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-drawer v-model="detailVisible" size="40%" title="考勤详情">
       <div v-if="detailLoading">加载中...</div>
       <div v-else>
@@ -162,7 +246,7 @@ watch(
           <div>
             <p class="title">{{ courseStore.attendanceDetail.session?.title }}</p>
             <p class="meta">
-              模式：{{ courseStore.attendanceDetail.session?.mode }} ·
+              模式：{{ courseStore.attendanceDetail.session?.mode === 'gesture' ? '手势签到' : '二维码签到' }} ·
               {{ courseStore.attendanceDetail.session?.start_at?.slice(0, 19) }}
             </p>
           </div>
@@ -217,6 +301,7 @@ watch(
 .actions {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 
 .session-list {
@@ -253,12 +338,53 @@ watch(
   gap: 8px;
 }
 
+.gesture-dialog {
+  padding: 20px 0;
+}
+
+.prompt-text {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.hint-text {
+  margin: 0 0 20px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.gesture-container {
+  display: flex;
+  justify-content: center;
+  margin: 24px 0;
+}
+
+.gesture-result {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 8px;
+}
+
+.pattern {
+  font-family: monospace;
+  font-size: 16px;
+  color: #6366f1;
+  font-weight: 600;
+}
+
 @media (max-width: 720px) {
   .session-card {
     grid-template-columns: 1fr;
   }
   .ops {
     justify-content: flex-start;
+  }
+  .actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 }
 </style>
