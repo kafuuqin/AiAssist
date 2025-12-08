@@ -16,6 +16,7 @@ import StudentMaterialsView from "@/views/materials/StudentMaterialsView.vue";
 import StudentAttendanceView from "@/views/attendance/StudentAttendanceView.vue";
 import StudentGradesView from "@/views/grades/StudentGradesView.vue";
 import StudentInteractionView from "@/views/interaction/StudentInteractionView.vue";
+import StudentAssistantView from "@/views/assistant/StudentAssistantView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -110,7 +111,7 @@ const router = createRouter({
         {
           path: 'assistant',
           name: 'student-assistant',
-          component: StudentDashboard,
+          component: StudentAssistantView,
           meta: { title: '学习助手', roles: ['student'] }
         },
       ],

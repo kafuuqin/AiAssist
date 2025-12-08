@@ -1,16 +1,40 @@
 <script setup>
 import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { useCourseStore } from '../../stores/course'
-import { useAuthStore } from '../../stores/auth'
-import { MagicStick, QuestionFilled } from '@element-plus/icons-vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
+import ChatWindow from '../../components/ChatWindows.vue'
+import { useChatStore } from '@/stores/chat.js'
 
-const courseStore = useCourseStore()
-const auth = useAuthStore()
-const loading = ref(false)
+const chatStore = useChatStore()
+const settingsVisible = ref(false)
 
-const handleAskQuestion = () => {
-  ElMessage.info('学习助手功能开发中...')
+const handleCommand = (command) => {
+  switch (command) {
+    case 'clear':
+      chatStore.clearMessages()
+      ElMessage.success('对话已清空')
+      break
+    case 'settings':
+      settingsVisible.value = true
+      break
+    case 'help':
+      window.open('/docs', '_blank')
+      break
+    case 'about':
+      ElMessageBox.alert(
+        'RAG智能对话系统 v1.0\n\n' +
+        '功能特点：\n' +
+        '• 智能区分文档查询与普通对话\n' +
+        '• 支持多轮对话记忆\n' +
+        '• 文档检索与语义理解\n' +
+        '• 友好的交互界面',
+        '关于系统',
+        {
+          confirmButtonText: '确定'
+        }
+      )
+      break
+  }
 }
 </script>
 
@@ -18,45 +42,31 @@ const handleAskQuestion = () => {
   <div class="page">
     <div class="page-header">
       <div>
-        <h2>学习助手</h2>
-        <p class="sub">智能问答和学习指导</p>
+        <h2>智能对话</h2>
+        <p class="sub">与AI助手进行智能问答，支持文档检索与多轮对话</p>
+      </div>
+      <div class="header-actions">
+        <el-dropdown @command="handleCommand">
+          <el-button type="primary">
+            更多操作<el-icon class="el-icon--right"><arrow-down /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="clear">清空对话</el-dropdown-item>
+              <el-dropdown-item command="settings">系统设置</el-dropdown-item>
+              <el-dropdown-item command="help">帮助文档</el-dropdown-item>
+              <el-dropdown-item command="about" divided>关于系统</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
-    <div class="assistant-content">
-      <el-card shadow="hover" class="feature-card">
-        <div class="feature-icon">
-          <el-icon :size="48" color="#6366f1"><MagicStick /></el-icon>
-        </div>
-        <h3>智能问答</h3>
-        <p class="feature-desc">向AI助手提问课程相关问题，获取个性化解答和学习建议</p>
-        <el-button type="primary" :icon="QuestionFilled" @click="handleAskQuestion">
-          开始提问
-        </el-button>
-      </el-card>
-
-      <el-card shadow="hover" class="feature-card">
-        <div class="feature-icon">
-          <el-icon :size="48" color="#22c55e"><MagicStick /></el-icon>
-        </div>
-        <h3>学习规划</h3>
-        <p class="feature-desc">根据你的学习进度和成绩，制定个性化的学习计划</p>
-        <el-button type="success" :icon="MagicStick" @click="handleAskQuestion">
-          查看规划
-        </el-button>
-      </el-card>
-
-      <el-card shadow="hover" class="feature-card">
-        <div class="feature-icon">
-          <el-icon :size="48" color="#f59e0b"><MagicStick /></el-icon>
-        </div>
-        <h3>错题分析</h3>
-        <p class="feature-desc">分析错题模式，提供针对性的知识点复习建议</p>
-        <el-button type="warning" :icon="MagicStick" @click="handleAskQuestion">
-          分析错题
-        </el-button>
-      </el-card>
+    <!-- 聊天区域 -->
+    <div class="chat-area">
+      <ChatWindow />
     </div>
+
   </div>
 </template>
 
@@ -64,55 +74,68 @@ const handleAskQuestion = () => {
 .page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
+  height: 100%;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  margin-bottom: 0;
 }
 
 .page-header h2 {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: #0f172a;
+  font-size: 24px;
+  font-weight: 600;
 }
 
 .sub {
   margin: 0;
   color: #64748b;
+  font-size: 14px;
 }
 
-.assistant-content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 24px;
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
-.feature-card {
-  text-align: center;
-  padding: 32px 24px;
-  transition: all 0.3s;
+.chat-area {
+  flex: 1;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.feature-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-}
-
-.feature-icon {
-  margin-bottom: 16px;
-}
-
-.feature-card h3 {
-  margin: 0 0 12px;
-  color: #0f172a;
-  font-size: 18px;
-}
-
-.feature-desc {
-  margin: 0 0 20px;
-  color: #64748b;
-  line-height: 1.5;
+.footer {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 12px;
+  border-top: 1px solid #e2e8f0;
+  margin-top: auto;
 }
 
 @media (max-width: 768px) {
-  .assistant-content {
-    grid-template-columns: 1fr;
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>
