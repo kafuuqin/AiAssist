@@ -83,7 +83,6 @@ const handleFileChange = (file) => {
  * 触发 el-upload 的手动选择（如果你想用原生 <input type="file"> 也可以）
  */
 const uploadRef = ref(null)
-
 /**
  * 调用后端 /faces/recognize 接口
  * 假设返回：
