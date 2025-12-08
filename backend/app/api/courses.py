@@ -231,10 +231,18 @@ def create_attendance(course_id):
         return err
     data = _json()
     title = data.get("title") or "课堂签到"
+    mode = data.get("mode") or "qrcode"
+    gesture_pattern = data.get("gesture_pattern")
+    
+    # 如果是手势模式，必须提供手势图案
+    if mode == "gesture" and not gesture_pattern:
+        return error("手势模式必须提供手势图案", 400)
+    
     session = AttendanceSession(
         course_id=course_id,
         title=title,
-        mode=data.get("mode") or "qrcode",
+        mode=mode,
+        gesture_pattern=gesture_pattern,  # 新增：存储手势图案
         start_at=datetime.utcnow(),
         status="open",
     )
@@ -293,7 +301,7 @@ def list_grades(course_id):
     grades = (
         db.session.query(Grade)
         .join(Grade.assignment)
-        .filter_by(course_id=course_id)
+.filter_by(course_id=course_id)
     )
     if assignment_filter:
         grades = grades.filter(Grade.assignment_id == assignment_filter)
@@ -463,3 +471,354 @@ def vote_poll(course_id, poll_id):
     db.session.add(vote)
     db.session.commit()
     return ok(vote.to_dict(), 201)
+
+
+@courses_bp.get("/<int:course_id>/student/dashboard")
+@jwt_required()
+def student_dashboard(course_id):
+    """学生仪表板数据"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    
+    # 获取学生基本信息
+    student = User.query.get(user_id)
+    
+    # 获取课程信息
+    course = Course.query.get(course_id)
+    
+    # 计算平均成绩
+    avg_score = db.session.query(db.func.avg(Grade.score)).join(Assignment).filter(
+        Assignment.course_id == course_id,
+        Grade.student_id == user_id
+    ).scalar()
+    
+    # 获取待完成作业数量
+    pending_assignments = db.session.query(Assignment).filter(
+        Assignment.course_id == course_id,
+        ~db.session.query(Grade).filter(
+            Grade.assignment_id == Assignment.id,
+            Grade.student_id == user_id
+        ).exists()
+    ).count()
+    
+    # 计算出勤率
+    total_sessions = AttendanceSession.query.filter_by(course_id=course_id).count()
+    attended_sessions = db.session.query(AttendanceRecord).join(AttendanceSession).filter(
+        AttendanceSession.course_id == course_id,
+        AttendanceRecord.student_id == user_id,
+        AttendanceRecord.status == "present"
+    ).count()
+    
+    attendance_rate = (attended_sessions / total_sessions * 100) if total_sessions > 0 else 0
+    
+    # 获取最近活动
+    recent_activities = []
+    
+    # 最近材料
+    recent_materials = Material.query.filter_by(course_id=course_id).order_by(
+        Material.created_at.desc()
+    ).limit(3).all()
+    for material in recent_materials:
+        recent_activities.append({
+            "type": "material",
+            "title": f"新资料: {material.title}",
+            "created_at": material.created_at
+        })
+    
+    # 最近作业
+    recent_assignments = Assignment.query.filter_by(course_id=course_id).order_by(
+        Assignment.created_at.desc()
+    ).limit(3).all()
+    for assignment in recent_assignments:
+        recent_activities.append({
+            "type": "assignment",
+            "title": f"新作业: {assignment.title}",
+            "created_at": assignment.created_at
+        })
+    
+    # 按时间排序
+    recent_activities.sort(key=lambda x: x["created_at"], reverse=True)
+    recent_activities = recent_activities[:5]  # 只取最近5个
+    return ok({
+        "student": student.to_dict(),
+        "course": course.to_dict(),
+        "avg_score": round(avg_score, 2) if avg_score else None,
+        "pending_assignments": pending_assignments,
+        "attendance_rate": round(attendance_rate, 2),
+        "recent_activities": recent_activities
+    })
+
+
+@courses_bp.get("/<int:course_id>/student/materials")
+@jwt_required()
+def student_materials(course_id):
+    """学生资料列表"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    page = max(int(request.args.get("page", 1)), 1)
+    page_size = min(max(int(request.args.get("page_size", 10)), 1), 100)
+    q = (request.args.get("q") or "").strip()
+    
+    query = Material.query.filter_by(course_id=course_id)
+    if q:
+        query = query.filter(db.or_(
+            Material.title.ilike(f"%{q}%"),
+            Material.description.ilike(f"%{q}%")
+        ))
+    
+    query = query.order_by(Material.created_at.desc())
+    items = query.limit(page_size).offset((page - 1) * page_size).all()
+    total = db.session.query(db.func.count(Material.id)).filter_by(course_id=course_id).scalar()
+    
+    return ok({
+        "items": [m.to_dict() for m in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    })
+
+
+@courses_bp.get("/<int:course_id>/student/attendance")
+@jwt_required()
+def student_attendance(course_id):
+    """学生考勤记录"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    
+    # 获取所有考勤会话
+    sessions = AttendanceSession.query.filter_by(course_id=course_id).order_by(
+        AttendanceSession.start_at.desc()
+    ).all()
+    
+    attendance_records = []
+    for session in sessions:
+        record = AttendanceRecord.query.filter_by(
+            session_id=session.id,
+            student_id=user_id
+        ).first()
+        
+        attendance_records.append({
+            "session": session.to_dict(),
+            "record": record.to_dict() if record else None,
+            "status": record.status if record else "absent"
+        })
+    
+    return ok(attendance_records)
+
+
+@courses_bp.post("/<int:course_id>/student/attendance/<int:session_id>/checkin")
+@jwt_required()
+def student_checkin(course_id, session_id):
+    """学生签到"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    data = _json()
+    
+    # 检查会话是否存在
+    session = AttendanceSession.query.filter_by(id=session_id, course_id=course_id).first()
+    if not session:
+        return error("考勤会话不存在", 404)
+    
+    # 检查是否已经签到
+    existing_record = AttendanceRecord.query.filter_by(
+        session_id=session_id,
+        student_id=user_id
+    ).first()
+    
+    if existing_record:
+        return error("已经签到过", 400)
+    
+    # 创建签到记录
+    record = AttendanceRecord(
+        session_id=session_id,
+        student_id=user_id,
+        status="present",
+        evidence=data.get("evidence"),
+        recognized_face_id=data.get("recognized_face_id"),
+    )
+    
+    db.session.add(record)
+    db.session.commit()
+    
+    return ok(record.to_dict(), 201)
+
+
+@courses_bp.get("/<int:course_id>/student/grades")
+@jwt_required()
+def student_grades(course_id):
+    """学生成绩查询"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    
+    grades = db.session.query(Grade).join(Assignment).filter(
+        Assignment.course_id == course_id,
+        Grade.student_id == user_id
+    ).order_by(Grade.graded_at.desc()).all()
+    
+    return ok([g.to_dict() for g in grades])
+
+
+@courses_bp.get("/<int:course_id>/student/assignments")
+@jwt_required()
+def student_assignments(course_id):
+    """学生作业列表"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    
+    assignments = Assignment.query.filter_by(course_id=course_id).order_by(
+        Assignment.created_at.desc()
+    ).all()
+    
+    assignments_with_status = []
+    for assignment in assignments:
+        grade = Grade.query.filter_by(
+            assignment_id=assignment.id,
+            student_id=user_id
+        ).first()
+        
+        assignments_with_status.append({
+            **assignment.to_dict(),
+            "submitted": grade is not None,
+            "score": grade.score if grade else None,
+            "graded_at": grade.graded_at if grade else None
+        })
+    
+    return ok(assignments_with_status)
+
+
+@courses_bp.get("/<int:course_id>/student/polls")
+@jwt_required()
+def student_polls(course_id):
+    """学生投票列表"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    
+    polls = Poll.query.filter_by(course_id=course_id).order_by(
+        Poll.created_at.desc()
+    ).all()
+    
+    polls_with_vote = []
+    for poll in polls:
+        user_vote = PollVote.query.filter_by(
+            poll_id=poll.id,
+            user_id=user_id
+        ).first()
+        
+        # 计算投票统计
+        votes = [v.option_index for v in poll.votes]
+        totals = []
+        if poll.options:
+            for idx in range(len(poll.options)):
+                totals.append(votes.count(idx))
+        
+        polls_with_vote.append({
+            **poll.to_dict(),
+            "user_vote": user_vote.option_index if user_vote else None,
+            "votes": totals
+        })
+    
+    return ok(polls_with_vote)
+
+
+@courses_bp.post("/<int:course_id>/student/polls/<int:poll_id>/vote")
+@jwt_required()
+def student_vote(course_id, poll_id):
+    """学生投票"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    data = _json()
+    option_index = data.get("option_index")
+    
+    if option_index is None:
+        return error("option_index required")
+    
+    poll = Poll.query.filter_by(id=poll_id, course_id=course_id).first()
+    if not poll:
+        return error("投票不存在", 404)
+    
+    # 检查是否已经投票
+    existing_vote = PollVote.query.filter_by(poll_id=poll_id, user_id=user_id).first()
+    if existing_vote:
+        return error("已经投过票了", 400)
+    
+    # 检查选项索引是否有效
+    if option_index < 0 or option_index >= len(poll.options):
+        return error("无效的选项", 400)
+    
+    vote = PollVote(poll_id=poll_id, user_id=user_id, option_index=option_index)
+    db.session.add(vote)
+    db.session.commit()
+    
+    return ok(vote.to_dict(), 201)
+
+
+@courses_bp.get("/<int:course_id>/student/interactions")
+@jwt_required()
+def student_interactions(course_id):
+    """学生课堂互动数据"""
+    _, err = ensure_course_member(course_id, allow_roles=["student"])
+    if err:
+        return err
+    
+    user_id = int(get_jwt_identity())
+    
+    # 获取学生的投票记录
+    votes = PollVote.query.join(Poll).filter(
+        Poll.course_id == course_id,
+        PollVote.user_id == user_id
+    ).all()
+    
+    # 获取学生的考勤记录
+    attendance_records = db.session.query(AttendanceRecord).join(AttendanceSession).filter(
+        AttendanceSession.course_id == course_id,
+        AttendanceRecord.student_id == user_id
+    ).all()
+    
+    return ok({
+        "votes": [v.to_dict() for v in votes],
+        "attendance": [r.to_dict() for r in attendance_records]
+    })
+
+
+@courses_bp.get("/student/courses")
+@jwt_required()
+def student_courses():
+    """学生课程列表"""
+    user_id = int(get_jwt_identity())
+    
+    # 获取学生选课的课程
+    enrollments = Enrollment.query.filter_by(
+        user_id=user_id,
+        role_in_course="student"
+    ).all()
+    
+    courses = []
+    for enrollment in enrollments:
+        course = Course.query.get(enrollment.course_id)
+        if course:
+            courses.append(course.to_dict())
+    
+    return ok(courses)

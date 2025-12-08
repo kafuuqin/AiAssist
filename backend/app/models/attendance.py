@@ -10,6 +10,7 @@ class AttendanceSession(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey("courses.id"), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
     mode = db.Column(db.String(50), default="qrcode")
+    gesture_pattern = db.Column(db.String(50), nullable=True)
     start_at = db.Column(db.DateTime, default=datetime.utcnow)
     end_at = db.Column(db.DateTime)
     status = db.Column(db.String(20), default="open")
@@ -22,6 +23,7 @@ class AttendanceSession(db.Model):
             "course_id": self.course_id,
             "title": self.title,
             "mode": self.mode,
+            "gesture_pattern": self.gesture_pattern,
             "start_at": self.start_at.isoformat() if self.start_at else None,
             "end_at": self.end_at.isoformat() if self.end_at else None,
             "status": self.status,
@@ -38,7 +40,6 @@ class AttendanceRecord(db.Model):
     evidence = db.Column(db.String(255))
     recognized_face_id = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
     session = db.relationship("AttendanceSession", backref=db.backref("records", lazy=True))
     student = db.relationship("User")
 

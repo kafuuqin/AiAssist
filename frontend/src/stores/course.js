@@ -16,6 +16,17 @@ import {
   createGrade,
   importGrades,
 } from '../api/modules/courses'
+import {
+    fetchStudentDashboard,
+    fetchStudentMaterials,
+    fetchStudentAttendance,
+    fetchStudentGrades,
+    fetchStudentAssignments,
+    fetchStudentPolls,
+    studentVote,
+    fetchStudentInteractions,
+    fetchStudentCourses, apiStudentCheckIn, // 确保这行导入存在
+} from '../api/modules/student'
 import { fetchMembers, addMember, updateMember, deleteMember } from '../api/modules/members'
 import debounce from 'lodash.debounce'
 
@@ -33,6 +44,14 @@ export const useCourseStore = defineStore('course', () => {
   const members = ref([])
   const memberSearch = ref({ items: [], total: 0 })
 
+  // 学生端数据
+  const studentDashboard = ref({})
+  const studentMaterials = ref([])
+  const studentAttendance = ref([])
+  const studentGrades = ref([])
+  const studentAssignments = ref([])
+  const studentPolls = ref([])
+
   const currentCourse = computed(() => courses.value.find((c) => String(c.id) === String(activeCourseId.value)))
 
   async function loadCourses() {
@@ -42,6 +61,25 @@ export const useCourseStore = defineStore('course', () => {
       activeCourseId.value = data[0].id
     }
     return data
+  }
+
+  // 添加学生端课程加载方法
+  async function loadStudentCourses() {
+    const { data } = await fetchStudentCourses()
+    courses.value = data
+    if (!activeCourseId.value && data?.length) {
+      activeCourseId.value = data[0].id
+    }
+    return data
+  }
+
+  // 修改后的loadCourses方法，根据用户角色调用不同的API
+  async function loadCoursesByRole(userRole) {
+    if (userRole === 'student') {
+      return await loadStudentCourses()
+    } else {
+      return await loadCourses()
+    }
   }
 
   async function loadMaterials(courseId = activeCourseId.value, params = {}) {
@@ -116,6 +154,66 @@ export const useCourseStore = defineStore('course', () => {
     return data
   }
 
+  // 学生端数据加载方法
+  async function loadStudentDashboard(courseId = activeCourseId.value) {
+    if (!courseId) return {}
+    const { data } = await fetchStudentDashboard(courseId)
+    studentDashboard.value = data
+    return data
+  }
+
+  async function loadStudentMaterials(courseId = activeCourseId.value) {
+    if (!courseId) return []
+    const { data } = await fetchStudentMaterials(courseId)
+    studentMaterials.value = data
+    return data
+  }
+
+  async function loadStudentAttendance(courseId = activeCourseId.value) {
+    if (!courseId) return []
+    const { data } = await fetchStudentAttendance(courseId)
+    studentAttendance.value = data
+    return data
+  }
+
+  async function loadStudentGrades(courseId = activeCourseId.value) {
+    if (!courseId) return []
+    const { data } = await fetchStudentGrades(courseId)
+    studentGrades.value = data
+    return data
+  }
+
+  async function loadStudentAssignments(courseId = activeCourseId.value) {
+    if (!courseId) return []
+    const { data } = await fetchStudentAssignments(courseId)
+    studentAssignments.value = data
+    return data
+  }
+
+  async function loadStudentPolls(courseId = activeCourseId.value) {
+    if (!courseId) return []
+    const { data } = await fetchStudentPolls(courseId)
+    studentPolls.value = data
+    return data
+  }
+
+  // 学生端操作方法
+  async function studentCheckIn(sessionId, payload, courseId = activeCourseId.value) {
+    if (!courseId) throw new Error('未选择课程')
+    const { data } = await apiStudentCheckIn(courseId, sessionId, payload)
+    // 重新加载考勤数据
+    await loadStudentAttendance(courseId)
+    return data
+  }
+
+  async function studentVote(pollId, option, courseId = activeCourseId.value) {
+    if (!courseId) throw new Error('未选择课程')
+    const { data } = await apiStudentVote(courseId, pollId, { option })
+    // 重新加载投票数据
+    await loadStudentPolls(courseId)
+    return data
+  }
+
   function setActiveCourse(id) {
     activeCourseId.value = id
   }
@@ -187,6 +285,13 @@ export const useCourseStore = defineStore('course', () => {
     assignments,
     members,
     memberSearch,
+    // 学生端数据
+    studentDashboard,
+    studentMaterials,
+    studentAttendance,
+    studentGrades,
+    studentAssignments,
+    studentPolls,
     currentCourse,
     loadCourses,
     loadMaterials,
@@ -197,6 +302,16 @@ export const useCourseStore = defineStore('course', () => {
     loadAssignments,
     loadMembers,
     searchUsers,
+    loadStudentCourses,
+    // 学生端方法
+    loadStudentDashboard,
+    loadStudentMaterials,
+    loadStudentAttendance,
+    loadStudentGrades,
+    loadStudentAssignments,
+    loadStudentPolls,
+    studentCheckIn,
+    studentVote,
     setActiveCourse,
     addMaterial,
     addAttendance,

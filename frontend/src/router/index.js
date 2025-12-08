@@ -10,6 +10,13 @@ import InteractionView from '../views/interaction/InteractionView.vue'
 import IntelligenceHub from '../views/ai/IntelligenceHub.vue'
 import MembersView from '../views/members/MembersView.vue'
 import { useAuthStore } from '../stores/auth'
+import StudentLayout from "@/layouts/StudentLayout.vue";
+import StudentDashboard from "@/views/dashboard/StudentDashboard.vue";
+import StudentMaterialsView from "@/views/materials/StudentMaterialsView.vue";
+import StudentAttendanceView from "@/views/attendance/StudentAttendanceView.vue";
+import StudentGradesView from "@/views/grades/StudentGradesView.vue";
+import StudentInteractionView from "@/views/interaction/StudentInteractionView.vue";
+import StudentAssistantView from "@/views/assistant/StudentAssistantView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -65,6 +72,50 @@ const router = createRouter({
         { path: 'ai', name: 'ai-hub', component: IntelligenceHub, meta: { title: '智能中心' } },
       ],
     },
+    // 学生端路由
+    {
+      path: '/student',
+      component: StudentLayout,
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: 'dashboard',
+          name: 'student-dashboard',
+          component: StudentDashboard,
+          meta: { title: '学习总览', roles: ['student'] }
+        },
+        {
+          path: 'materials',
+          name: 'student-materials',
+          component: StudentMaterialsView,
+          meta: { title: '课程资料', roles: ['student'] }
+        },
+        {
+          path: 'attendance',
+          name: 'student-attendance',
+          component: StudentAttendanceView,
+          meta: { title: '课堂签到', roles: ['student'] }
+        },
+        {
+          path: 'grades',
+          name: 'student-grades',
+          component: StudentGradesView,
+          meta: { title: '我的成绩', roles: ['student'] }
+        },
+        {
+          path: 'interaction',
+          name: 'student-interaction',
+          component: StudentInteractionView,
+          meta: { title: '课堂互动', roles: ['student'] }
+        },
+        {
+          path: 'assistant',
+          name: 'student-assistant',
+          component: StudentAssistantView,
+          meta: { title: '学习助手', roles: ['student'] }
+        },
+      ],
+    },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
@@ -79,10 +130,35 @@ router.beforeEach((to, from, next) => {
     next({ name: 'login', query: { redirect: to.fullPath } })
     return
   }
-  // 角色限制：学生不可访问成员管理
-  if (to.name === 'members' && auth.user?.role === 'student') {
-    next({ name: 'dashboard' })
-    return
+
+  // 角色权限控制
+  if (auth.user) {
+    const userRole = auth.user.role
+    const routeRoles = to.meta?.roles
+
+    // 学生只能访问学生端路由
+    if (userRole === 'student' && !to.path.startsWith('/student')) {
+      next('/student/dashboard')
+      return
+    }
+
+    // 教师/管理员不能访问学生端路由
+    if ((userRole === 'teacher' || userRole === 'admin') && to.path.startsWith('/student')) {
+      next('/')
+      return
+    }
+
+    // 检查路由角色限制
+    if (routeRoles && !routeRoles.includes(userRole)) {
+      next('/')
+      return
+    }
+
+    // 学生不可访问成员管理
+    if (to.name === 'members' && userRole === 'student') {
+      next({ name: 'dashboard' })
+      return
+    }
   }
   if (to.name === 'login' && auth.isAuthenticated) {
     next({ name: 'dashboard' })
