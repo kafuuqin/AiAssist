@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useCourseStore } from '../../stores/course'
-import { useAuthStore } from '../../stores/auth'
-import SmartAttendanceDialog from '../../components/SmartAttendanceDialog.vue'  // ✅ 新增
+import { useCourseStore } from '@/stores/course.js'
+import { useAuthStore } from '@/stores/auth.js'
+import SmartAttendanceDialog from '@/components/SmartAttendanceDialog.vue'
 
 const courseStore = useCourseStore()
 const auth = useAuthStore()
