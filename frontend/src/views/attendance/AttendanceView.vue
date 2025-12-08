@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useCourseStore } from '../../stores/course'
 import { useAuthStore } from '../../stores/auth'
+import SmartAttendanceDialog from './SmartAttendanceDialog.vue'  // ✅ 新增
 
 const courseStore = useCourseStore()
 const auth = useAuthStore()
@@ -13,6 +14,10 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const qrCode = ref('')
 const passcode = ref('')
+
+// ✅ 新增：智能点到弹窗控制
+const smartVisible = ref(false)
+const smartSessionId = ref<number | null>(null)
 
 const load = async () => {
   if (!courseStore.activeCourseId) return
@@ -36,6 +41,7 @@ const handleCreate = async () => {
     await courseStore.addAttendance({ title: title.value })
     ElMessage.success('创建成功')
     title.value = ''
+    await load()
   } catch (err) {
     ElMessage.error(err.response?.data?.message || '创建失败')
   } finally {
@@ -43,7 +49,7 @@ const handleCreate = async () => {
   }
 }
 
-const openDetail = async (sessionId) => {
+const openDetail = async (sessionId: number) => {
   detailVisible.value = true
   detailLoading.value = true
   try {
@@ -57,12 +63,37 @@ const openDetail = async (sessionId) => {
   }
 }
 
-const handleExport = async (sessionId) => {
+// ✅ 新增：打开智能点到弹窗
+const openSmartAttendance = () => {
+  // 这里默认取当前课程中状态为 open 的签到任务，也可以改成弹窗内选择
+  const openSessions = (courseStore.attendance || []).filter(
+      (s) => s.status === 'open'
+  )
+  if (!openSessions.length) {
+    ElMessage.warning('请先发布一个“进行中”的签到任务')
+    return
+  }
+  // 简单起见，取第一个 open 的 session
+  smartSessionId.value = openSessions[0].id
+  smartVisible.value = true
+}
+
+// ✅ 新增：智能点到完成回调
+const handleSmartFinished = async (payload: { sessionId: number } | undefined) => {
+  smartVisible.value = false
+  // 刷新整体考勤列表和当前详情
+  await load()
+  if (payload?.sessionId) {
+    await openDetail(payload.sessionId)
+  }
+}
+
+const handleExport = async (sessionId: number) => {
   if (!sessionId) return
   try {
     const data = await courseStore.loadAttendanceDetail(sessionId)
     const rows = (data.records || []).map(
-      (r) => `${r.student_id},${r.status},${r.created_at || ''},${r.evidence || ''}`
+        (r) => `${r.student_id},${r.status},${r.created_at || ''},${r.evidence || ''}`
     )
     const csv = ['student_id,status,created_at,evidence', ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -87,10 +118,11 @@ const isManager = computed(() => {
 
 onMounted(load)
 watch(
-  () => courseStore.activeCourseId,
-  () => load()
+    () => courseStore.activeCourseId,
+    () => load()
 )
 </script>
+
 
 <template>
   <div class="page">
@@ -103,7 +135,13 @@ watch(
       <div class="actions" v-if="isManager">
         <el-input v-model="title" placeholder="请输入签到标题" style="width: 220px" />
         <el-button type="primary" :loading="creating" @click="handleCreate">发布签到</el-button>
-        <el-button type="success" plain>智能点到</el-button>
+        <el-button
+            type="success"
+            plain
+            @click="openSmartAttendance"
+        >
+        智能点到
+        </el-button>
       </div>
     </div>
 
@@ -150,6 +188,12 @@ watch(
         </el-table>
       </div>
     </el-drawer>
+    <SmartAttendanceDialog
+        v-model:visible="smartVisible"
+        :session-id="smartSessionId"
+        :course-id="courseStore.activeCourseId"
+        @finished="handleSmartFinished"
+    />
   </div>
 </template>
 
