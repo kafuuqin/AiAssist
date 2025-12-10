@@ -178,6 +178,9 @@ def get_statistics(subject):
     
     scores = [g.score for g in grades]
     
+    # 计算及格人数
+    pass_count = sum(1 for score in scores if score >= 60)
+    
     statistics = {
         'subject': subject,
         'count': len(scores),
@@ -185,7 +188,8 @@ def get_statistics(subject):
         'median': float(np.median(scores)),
         'max': float(np.max(scores)),
         'min': float(np.min(scores)),
-        'std': float(np.std(scores))
+        'std': float(np.std(scores)),
+        'pass_rate': float(pass_count / len(scores)) if scores else 0
     }
     
     return jsonify(statistics), 200
@@ -215,8 +219,8 @@ def predict_grades(student_id):
     at_risk = prediction < 60
     
     return jsonify({
-        'predicted_score': prediction,
-        'at_risk': at_risk,
+        'predicted_score': float(prediction),
+        'at_risk': bool(at_risk),
         'trend': 'increasing' if model.coef_[0] > 0 else 'decreasing'
     }), 200
 

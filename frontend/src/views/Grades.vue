@@ -140,10 +140,30 @@
           <template #header>
             <div class="card-header">
               <span>成绩分析</span>
+              <el-select 
+                v-model="analysisForm.subject" 
+                placeholder="选择科目" 
+                @change="fetchAnalysisData"
+                style="width: 200px;"
+              >
+                <el-option
+                  v-for="subject in subjects"
+                  :key="subject"
+                  :label="subject"
+                  :value="subject"
+                />
+              </el-select>
             </div>
           </template>
           
-          <div ref="chartContainer" style="height: 400px;"></div>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <div ref="chartContainer" style="width: 100%; height: 400px;"></div>
+            </el-col>
+            <el-col :span="12">
+              <div ref="pieChartContainer" style="width: 100%; height: 400px;"></div>
+            </el-col>
+          </el-row>
           
           <div class="analysis-stats">
             <el-row :gutter="20">
@@ -151,7 +171,7 @@
                 <el-card class="stat-card">
                   <div class="stat-content">
                     <div class="stat-info">
-                      <div class="stat-number">{{ analysis.average }}</div>
+                      <div class="stat-number">{{ analysisData.average !== null ? analysisData.average.toFixed(1) : 'N/A' }}</div>
                       <div class="stat-label">平均分</div>
                     </div>
                   </div>
@@ -162,7 +182,7 @@
                 <el-card class="stat-card">
                   <div class="stat-content">
                     <div class="stat-info">
-                      <div class="stat-number">{{ analysis.highest }}</div>
+                      <div class="stat-number">{{ analysisData.highest !== null ? analysisData.highest : 'N/A' }}</div>
                       <div class="stat-label">最高分</div>
                     </div>
                   </div>
@@ -173,7 +193,7 @@
                 <el-card class="stat-card">
                   <div class="stat-content">
                     <div class="stat-info">
-                      <div class="stat-number">{{ analysis.lowest }}</div>
+                      <div class="stat-number">{{ analysisData.lowest !== null ? analysisData.lowest : 'N/A' }}</div>
                       <div class="stat-label">最低分</div>
                     </div>
                   </div>
@@ -184,8 +204,54 @@
                 <el-card class="stat-card">
                   <div class="stat-content">
                     <div class="stat-info">
-                      <div class="stat-number">{{ analysis.passRate }}%</div>
-                      <div class="stat-label">及格率</div>
+                      <div class="stat-number">{{ analysisData.median !== null ? analysisData.median : 'N/A' }}</div>
+                      <div class="stat-label">中位数</div>
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+            </el-row>
+            
+            <el-row :gutter="20" style="margin-top: 20px;">
+              <el-col :span="6">
+                <el-card class="stat-card">
+                  <div class="stat-content">
+                    <div class="stat-info">
+                      <div class="stat-number">{{ analysisData.count !== null ? analysisData.count : 'N/A' }}</div>
+                      <div class="stat-label">总人数</div>
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+              
+              <el-col :span="6">
+                <el-card class="stat-card">
+                  <div class="stat-content">
+                    <div class="stat-info">
+                      <div class="stat-number">{{ analysisData.passRate !== null ? analysisData.passRate.toFixed(1) : 'N/A' }}</div>
+                      <div class="stat-label">及格率(%)</div>
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+              
+              <el-col :span="6">
+                <el-card class="stat-card">
+                  <div class="stat-content">
+                    <div class="stat-info">
+                      <div class="stat-number">{{ analysisData.std !== null ? analysisData.std.toFixed(2) : 'N/A' }}</div>
+                      <div class="stat-label">标准差</div>
+                    </div>
+                  </div>
+                </el-card>
+              </el-col>
+              
+              <el-col :span="6">
+                <el-card class="stat-card">
+                  <div class="stat-content">
+                    <div class="stat-info">
+                      <div class="stat-number">{{ analysisData.variance !== null ? analysisData.variance.toFixed(2) : 'N/A' }}</div>
+                      <div class="stat-label">方差</div>
                     </div>
                   </div>
                 </el-card>
@@ -199,7 +265,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, getCurrentInstance, computed } from 'vue'
+import { ref, onMounted, watch, getCurrentInstance, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
@@ -235,16 +301,27 @@ const queryForm = ref({
 
 const students = ref([])
 const grades = ref([])
-const analysis = ref({
-  average: 85.5,
-  highest: 98,
-  lowest: 62,
-  passRate: 92.5
+const analysisForm = ref({
+  subject: ''
+})
+
+const subjects = ref([])
+const analysisData = ref({
+  average: null,
+  highest: null,
+  lowest: null,
+  median: null,
+  count: null,
+  passRate: null,
+  std: null,
+  variance: null
 })
 
 const router = useRouter()
 const chartContainer = ref()
+const pieChartContainer = ref()
 let chart = null
+let pieChart = null
 
 const authStore = useAuthStore()
 const isTeacher = computed(() => authStore.user?.role === 'teacher')
@@ -265,12 +342,19 @@ onMounted(async () => {
   // 获取成绩列表
   await fetchGrades()
   
+  // 获取科目列表
+  await fetchSubjects()
+  
+  // 使用 nextTick 确保 DOM 更新后再初始化图表
+  await nextTick()
   initChart()
 })
 
-watch(activeTab, (newTab) => {
+watch(activeTab, async (newTab) => {
   if (newTab === 'analysis') {
-    updateChart()
+    // 等待DOM更新后再更新图表
+    await nextTick();
+    initChart(); // 重新初始化图表而不是仅仅更新
   }
 })
 
@@ -465,7 +549,7 @@ const fetchGrades = async () => {
     })
     grades.value = response.data.map(item => ({
       ...item,
-      student_name: students.value.find(s => s.id === item.student_id)?.name || '未知学生'
+      student_name: students.value.find(s => s.id === item.student_id)?.username || '未知学生'
     }))
   } catch (error) {
     let errorMessage = '查询成绩失败'
@@ -485,6 +569,60 @@ const fetchGrades = async () => {
     loading.value = false
   }
 }
+
+const fetchSubjects = async () => {
+  try {
+    const response = await api.get('/grades/')
+    const allGrades = response.data
+    subjects.value = [...new Set(allGrades.map(g => g.subject))]
+    
+    // 默认选择第一个科目
+    if (subjects.value.length > 0 && !analysisForm.value.subject) {
+      analysisForm.value.subject = subjects.value[0]
+      // 等待DOM更新后再获取分析数据
+      await nextTick()
+      await fetchAnalysisData()
+    }
+  } catch (error) {
+    console.error('获取科目列表失败:', error)
+    ElMessage.error('获取科目列表失败')
+  }
+}
+
+const fetchAnalysisData = async () => {
+  if (!analysisForm.value.subject) {
+    return;
+  }
+  
+  try {
+    const response = await api.get(`/grades/${analysisForm.value.subject}/statistics`);
+    const stats = response.data;
+    
+    // 计算额外统计数据
+    const passCount = grades.value.filter(g => 
+      g.subject === analysisForm.value.subject && g.score >= 60).length;
+    const totalCount = grades.value.filter(g => 
+      g.subject === analysisForm.value.subject).length;
+    
+    analysisData.value = {
+      average: stats.average,
+      highest: stats.max,
+      lowest: stats.min,
+      median: stats.median,
+      count: stats.count,
+      passRate: totalCount > 0 ? (passCount / totalCount) * 100 : 0,
+      std: stats.std,
+      variance: stats.std ? stats.std * stats.std : null
+    };
+    
+    // 更新图表
+    await nextTick();
+    updateChart();
+  } catch (error) {
+    console.error('获取分析数据失败:', error);
+    ElMessage.error('获取分析数据失败');
+  }
+};
 
 const editGrade = (grade) => {
   // 在实际应用中，这里会打开编辑对话框
@@ -520,37 +658,153 @@ const deleteGrade = async (grade) => {
 }
 
 const initChart = () => {
+  // 确保DOM元素存在再初始化图表
   if (chartContainer.value) {
-    chart = echarts.init(chartContainer.value)
-    updateChart()
+    // 如果已有图表实例，先销毁
+    if (chart) {
+      chart.dispose();
+    }
+    // 创建新的柱状图实例
+    chart = echarts.init(chartContainer.value);
   }
+  
+  // 确保DOM元素存在再初始化饼图
+  if (pieChartContainer.value) {
+    // 如果已有饼图实例，先销毁
+    if (pieChart) {
+      pieChart.dispose();
+    }
+    // 创建新的饼图实例
+    pieChart = echarts.init(pieChartContainer.value);
+  }
+  
+  // 等待一小段时间确保图表初始化完成
+  setTimeout(() => {
+    updateChart();
+  }, 100);
 }
 
 const updateChart = () => {
-  if (!chart) return
+  if ((!chart && !pieChart) || !analysisForm.value.subject) return
   
-  const option = {
-    title: {
-      text: '成绩分布图'
-    },
-    tooltip: {},
-    xAxis: {
-      type: 'category',
-      data: ['60以下', '60-70', '70-80', '80-90', '90以上']
-    },
-    yAxis: {
-      type: 'value'
-    },
-    series: [{
-      type: 'bar',
-      data: [2, 5, 12, 18, 8],
-      itemStyle: {
-        color: '#409EFF'
-      }
-    }]
+  // 更新柱状图
+  if (chart) {
+    // 计算成绩分布
+    const subjectGrades = grades.value.filter(g => g.subject === analysisForm.value.subject)
+    const distribution = [0, 0, 0, 0, 0] // [60以下, 60-70, 70-80, 80-90, 90以上]
+    
+    subjectGrades.forEach(g => {
+      if (g.score < 60) distribution[0]++
+      else if (g.score < 70) distribution[1]++
+      else if (g.score < 80) distribution[2]++
+      else if (g.score < 90) distribution[3]++
+      else distribution[4]++
+    })
+    
+    const barOption = {
+      title: {
+        text: `${analysisForm.value.subject}成绩分布柱状图`,
+        left: 'center'
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'shadow'
+        }
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: ['60分以下', '60-69分', '70-79分', '80-89分', '90分以上'],
+        axisTick: {
+          alignWithLabel: true
+        }
+      },
+      yAxis: {
+        type: 'value',
+        name: '人数'
+      },
+      series: [{
+        type: 'bar',
+        barWidth: '60%',
+        data: distribution,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#83bff6' },
+            { offset: 0.5, color: '#188df0' },
+            { offset: 1, color: '#188df0' }
+          ])
+        },
+        emphasis: {
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#2378f7' },
+              { offset: 0.7, color: '#2378f7' },
+              { offset: 1, color: '#83bff6' }
+            ])
+          }
+        }
+      }]
+    }
+    
+    chart.setOption(barOption, true)
   }
   
-  chart.setOption(option)
+  // 更新饼图
+  if (pieChart) {
+    // 计算成绩段人数
+    const subjectGrades = grades.value.filter(g => g.subject === analysisForm.value.subject)
+    const distribution = [0, 0, 0, 0, 0] // [60以下, 60-70, 70-80, 80-90, 90以上]
+    
+    subjectGrades.forEach(g => {
+      if (g.score < 60) distribution[0]++
+      else if (g.score < 70) distribution[1]++
+      else if (g.score < 80) distribution[2]++
+      else if (g.score < 90) distribution[3]++
+      else distribution[4]++
+    })
+    
+    const pieOption = {
+      title: {
+        text: `${analysisForm.value.subject}成绩分布饼图`,
+        left: 'center'
+      },
+      tooltip: {
+        trigger: 'item'
+      },
+      legend: {
+        orient: 'vertical',
+        left: 'left'
+      },
+      series: [
+        {
+          type: 'pie',
+          radius: '50%',
+          data: [
+            { value: distribution[0], name: '60分以下' },
+            { value: distribution[1], name: '60-69分' },
+            { value: distribution[2], name: '70-79分' },
+            { value: distribution[3], name: '80-89分' },
+            { value: distribution[4], name: '90分以上' }
+          ],
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
+          }
+        }
+      ]
+    };
+    
+    pieChart.setOption(pieOption, true)
+  }
 }
 
 const exportGrades = async () => {

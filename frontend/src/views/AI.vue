@@ -16,7 +16,7 @@
                   <el-option
                     v-for="student in students"
                     :key="student.id"
-                    :label="student.name"
+                    :label="student.username"
                     :value="student.id"
                   />
                 </el-select>
@@ -52,7 +52,7 @@
               >
                 <template #default>
                   <div class="result-content">
-                    <p>根据历史数据分析，预测该学生在 {{ getSubjectName(predictionForm.subject) }} 考试中可能获得的成绩：</p>
+                    <p>根据历史数据分析，预测学生 {{ getSelectedStudentName() }} 在 {{ getSubjectName(predictionForm.subject) }} 考试中可能获得的成绩：</p>
                     <div class="score-display">
                       <span class="score">{{ predictionResult.score }}</span>
                       <span class="score-label">分</span>
@@ -157,6 +157,9 @@ const chatMessages = ref([
 
 const chatHistoryRef = ref(null)
 
+// 添加学生列表的ref
+const students = ref([])
+
 const authStore = useAuthStore()
 const isTeacher = computed(() => authStore.user?.role === 'teacher')
 
@@ -189,12 +192,17 @@ const fetchStudents = async () => {
 const predictGrade = async () => {
   predicting.value = true
   
-  // 模拟API调用
-  setTimeout(() => {
-    // 模拟预测结果
+  try {
+    // 调用真实的API接口进行成绩预测
+    const response = await api.get(`/grades/${predictionForm.value.student_id}/predict`, {
+      params: {
+        subject: predictionForm.value.subject
+      }
+    });
+    
     predictionResult.value = {
-      score: Math.floor(Math.random() * 40) + 60, // 60-100之间的随机分数
-      confidence: Math.floor(Math.random() * 30) + 70, // 70-100之间的置信度
+      score: Math.round(response.data.predicted_score),
+      confidence: Math.round(Math.random() * 30) + 70, // 70-100之间的置信度
       suggestions: [
         '建议加强课后练习，每天至少完成10道相关题目',
         '可参加课后辅导班，针对性提高薄弱环节',
@@ -202,9 +210,12 @@ const predictGrade = async () => {
         '定期复习已学知识，巩固基础'
       ]
     }
-    
-    predicting.value = false
-  }, 1500)
+  } catch (error) {
+    console.error('成绩预测失败:', error);
+    ElMessage.error('成绩预测失败: ' + (error.response?.data?.message || error.message));
+  } finally {
+    predicting.value = false;
+  }
 }
 
 const getSubjectName = (subject) => {
@@ -271,6 +282,12 @@ const scrollToBottom = () => {
     }
   })
 }
+
+const getSelectedStudentName = () => {
+  const selectedStudent = students.value.find(student => student.id === predictionForm.value.student_id)
+  return selectedStudent ? selectedStudent.username : ''
+}
+
 </script>
 
 <style scoped>
