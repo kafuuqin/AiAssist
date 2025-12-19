@@ -5,6 +5,7 @@ from .grade import Assignment, Grade
 from .interaction import Poll, PollVote
 from .material import Material
 from .user import User
+from .faceembedding import FaceEmbedding
 
 __all__ = [
     "AttendanceRecord",
@@ -17,4 +18,5 @@ __all__ = [
     "Poll",
     "PollVote",
     "User",
+    "FaceEmbedding"
 ]
