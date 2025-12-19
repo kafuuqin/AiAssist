@@ -140,10 +140,10 @@ Thumbs.db
 uploads/
 
 # Frontend
-/frontend/node_modules/
-/frontend/dist/
-/frontend/.env*
-!/frontend/.env.example
+/frontend1/node_modules/
+/frontend1/dist/
+/frontend1/.env*
+!/frontend1/.env.example
 
 # Log files
 *.log
